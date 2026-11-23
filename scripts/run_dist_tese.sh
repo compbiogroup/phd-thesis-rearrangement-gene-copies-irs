@@ -27,16 +27,17 @@ fi
 #
 # With PART=<ALGO> (a partition algorithm of run_part_tese.sh, e.g. SOARComb),
 # dist runs on the reduced instances of that algorithm
-# (part_folder/RED/<ALGO>, part_folder is PART_FOLDER or ANS_TESE_PART), with
-# the decompositions of run_dec_tese.sh with the same PART
-# (ANS_TESE_DEC_<ALGO>), and the results go to ANS_TESE_DIST_<ALGO>. The
+# (part_folder/RED/<ALGO>, part_folder is PART_FOLDER or TESE_OUT/ANS_TESE_PART),
+# with the decompositions of run_dec_tese.sh with the same PART
+# (TESE_OUT/ANS_TESE_DEC_<ALGO>), and the results go to
+# TESE_OUT/ANS_TESE_DIST_<ALGO>. The
 # reduced genomes have no replicas, so a single mapping is used. Instances
 # without a partition (lines NA) get the result NA.
 #
 # With FIX=<ALGO> (and FIX_PAIRS=1), only the option dec can be used: dist
 # runs on the original instances with the decompositions of run_dec_tese.sh with
-# the same FIX (and FIX_PAIRS), and the results go to ANS_TESE_DIST_FIX_<ALGO>
-# (or ANS_TESE_DIST_FIX_<ALGO>_PAIRS).
+# the same FIX (and FIX_PAIRS), and the results go to
+# TESE_OUT/ANS_TESE_DIST_FIX_<ALGO> (or TESE_OUT/ANS_TESE_DIST_FIX_<ALGO>_PAIRS).
 
 cd "$(dirname "$0")/../cyc"
 
@@ -48,7 +49,7 @@ out_folder=${OUT_FOLDER:-../TESE_OUT/ANS_TESE_DIST}
 
 # must be the same values used in run_dec_tese.sh
 sizes="200"
-mods="SREV SREV_TRANS"
+mods="SDCJ SREV SREV_TRANS"
 heurs="ga rand"
 algos="bfs"
 dec_params="-e" # options -e, -z and -u used to run dec
@@ -66,10 +67,10 @@ n_inst=${N_INST:-100} # instances per input file
 
 if [ -n "$PART" ]
 then
-    part_folder=${PART_FOLDER:-ANS_TESE_PART} # out_folder of run_part_tese.sh
+    part_folder=${PART_FOLDER:-../TESE_OUT/ANS_TESE_PART} # out_folder of run_part_tese.sh
     input_folder=${INPUT_FOLDER:-$part_folder/RED/$PART}
-    dec_folder=${DEC_FOLDER:-ANS_TESE_DEC_$PART}
-    out_folder=${OUT_FOLDER:-ANS_TESE_DIST_$PART}
+    dec_folder=${DEC_FOLDER:-../TESE_OUT/ANS_TESE_DEC_$PART}
+    out_folder=${OUT_FOLDER:-../TESE_OUT/ANS_TESE_DIST_$PART}
     heurs="rand" # the same used by run_dec_tese.sh with PART
     k_map=${K_MAP:-1}
 fi
@@ -87,8 +88,8 @@ then
         suffix=${suffix}_PAIRS
         heurs="rand" # the same used by run_dec_tese.sh with FIX_PAIRS
     fi
-    dec_folder=${DEC_FOLDER:-ANS_TESE_DEC_$suffix}
-    out_folder=${OUT_FOLDER:-ANS_TESE_DIST_$suffix}
+    dec_folder=${DEC_FOLDER:-../TESE_OUT/ANS_TESE_DEC_$suffix}
+    out_folder=${OUT_FOLDER:-../TESE_OUT/ANS_TESE_DIST_$suffix}
 fi
 
 # Run dist on file with extra options params, saving the joined result in

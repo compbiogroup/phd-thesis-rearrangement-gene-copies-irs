@@ -21,25 +21,25 @@
 #
 # With PART=<ALGO> (a partition algorithm of run_part_tese.sh, e.g. SOARComb),
 # dec runs on the reduced instances of that algorithm
-# (part_folder/RED/<ALGO>, part_folder is PART_FOLDER or ANS_TESE_PART) and the
-# results go to ANS_TESE_DEC_<ALGO>. The reduced genomes have no replicas, so
+# (part_folder/RED/<ALGO>, part_folder is PART_FOLDER or TESE_OUT/ANS_TESE_PART)
+# and the results go to TESE_OUT/ANS_TESE_DEC_<ALGO>. The reduced genomes have no replicas, so
 # the cycle packing is determined and only rand with one iteration is used.
 # Instances without a partition (lines NA) get the result NA.
 #
 # With FIX=<ALGO>, dec runs on the original instances with the adjacencies of
 # the partitions of that algorithm fixed (option -f of dec with the files
 # part_folder/FIX/<ALGO>/N<n>/<mod>/<file name>.txt of run_part_fix_tese.sh),
-# and the results go to ANS_TESE_DEC_FIX_<ALGO>. With FIX_PAIRS=1 the
+# and the results go to TESE_OUT/ANS_TESE_DEC_FIX_<ALGO>. With FIX_PAIRS=1 the
 # correspondence of genes of the partitions is also fixed (option -p), the
-# results go to ANS_TESE_DEC_FIX_<ALGO>_PAIRS and, since the packing is then
+# results go to TESE_OUT/ANS_TESE_DEC_FIX_<ALGO>_PAIRS and, since the packing is then
 # determined, only rand with one iteration is used.
 
 cd "$(dirname "$0")/../cyc"
 
 make
 
-input_folder=${INPUT_FOLDER:-~/Documents/TESE}
-out_folder=${OUT_FOLDER:-../ANS_TESE/ANS_TESE_DEC}
+input_folder=${INPUT_FOLDER:-~/Documents/TESE_SMALL}
+out_folder=${OUT_FOLDER:-../TESE_OUT/ANS_TESE_DEC}
 
 sizes="200"
 mods="SDCJ SREV SREV_TRANS"
