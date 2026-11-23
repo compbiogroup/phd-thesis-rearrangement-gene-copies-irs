@@ -2,7 +2,8 @@
 
 ## Origem e estado do repositório
 
-- `cyc/` e os scripts `run_dec_tese.sh` e `run_dist_tese.sh` foram copiados de `Gabriel-Siqueira/Doutorado` no commit `ecbf3a1`. `chim_flex/` e os scripts de partição foram trazidos por outra instância.
+- `cyc/` e os scripts `run_dec_tese.sh` e `run_dist_tese.sh` foram copiados de `Gabriel-Siqueira/Doutorado` no commit `ecbf3a1`.
+- `partition/` (antes `chim_flex/`) foi copiado do submódulo `GitHub/chim_flex` (branch `unbalanced`, commit `e3f0553`): todos os arquivos rastreados, menos `datasets/` (dados antigos, sem uso). Os scripts de partição vieram de `GitHub/scripts` (commit `ecbf3a1`), com as saídas padrão movidas para `TESE_OUT/`. Os dois lados evoluem separados, como o `cyc`.
 - `code_tese` e `GitHub/cyc` (repositório do doutorado) evoluem separados: mudanças num não chegam no outro. Vale decidir qual dos dois é a referência.
 - `cyc/quickcheck` está copiado como arquivos comuns (QuickCheck++, GPLv3, usado só nos testes); não é submódulo.
 - `cyc/main_dec.cpp` está na versão commitada, com as regras subótimas do MSOAR **ativas**. No `GitHub/cyc`, o usuário tem uma alteração local, não commitada, que as comenta.
@@ -11,9 +12,36 @@
 ## Padrões dos scripts (decididos pelo usuário)
 
 - Todas as saídas ficam em `code_tese/TESE_OUT/` (caminhos relativos a `cyc/` nos scripts do cyc).
-- A decomposição (`run_dec_tese.sh`, `run_dist_tese.sh`) lê `~/Documents/TESE_SMALL`, um subconjunto de arquivos inteiros do `TESE` (mesmos nomes e conteúdo, veja `copy_db.sh` no repositório do doutorado). Por isso os arquivos `FIX` da partição batem pelo nome com as entradas do `dec`.
-- A partição lê `TESE`. Os dois scripts de partição ainda apontam para lugares diferentes: `~/Dropbox/Context/doutorado/Dados/TESE` (`run_part_tese.sh`) e `~/Documents/TESE` (`run_part_fix_tese.sh`). Como o segundo reaproveita os arquivos `PART` do primeiro, vale alinhar.
+- A base da tese está em `db/` (5000 arquivos, 2,6 GB), e todos os scripts a leem por padrão. Os `.txt` de `db/` vão para o Git LFS (`.gitattributes`); o `db/README.md` não. Só dê `git add db` com o `git-lfs` instalado e configurado (`git lfs install`), senão os arquivos entram como texto comum.
+- A partição usa a base inteira. A decomposição (`run_dec_tese.sh`, `run_dist_tese.sh`) usa só o subconjunto que antes ficava em `~/Documents/TESE_SMALL` (`copy_db.sh` no repositório do doutorado): N200, op 100 e 200, I 0 e 50, L 10, 100 e 200, F 0, 40 e 100. Os padrões de `OP_VALS`, `I_VALS`, `L_VALS` e `F_VALS` (`${VAR-padrão}`, vazio mantém todos) selecionam esse subconjunto, que é o mesmo das saídas antigas em `~/Dropbox/Context/doutorado/Dados/TESE/ANS/` (108 arquivos). Os nomes são os mesmos da base, então os arquivos `FIX` e `RED` da partição batem com as entradas do `dec`.
 - Operações (`mods`): `SDCJ SREV SREV_TRANS`.
+- Partição: `run_part_tese.sh` roda `Greedy GreedySin SOAR SOARComb` e `run_part_fix_tese.sh` roda `Greedy SOARComb Approx`. Os dois aceitam `ALGOS` e gravam em `TESE_OUT/ANS_TESE_PART` (`PART`, `COST`, `RED`, `FIX`, `PHASE2`).
+
+## Partição de genomas (`partition/`)
+
+### Código e tese
+
+- O texto é o capítulo `tese/tese_tex/partition.tex` do repositório do doutorado. O módulo `partition/src/PApprox.hs` segue o Algoritmo 1 atual: conjuntos B_C por caso do Lema `tmin_comp`, classes ativas e o Lema `tmin_ativa`.
+- O fator 2tk do Teorema `teo:aprox_part` só vale para relações simétricas e transitivas (trivial e igualdade). A segunda etapa, que corta um bloco D, só roda com relações não transitivas (intervalo, F > 0), e a tese não garante fator nesse caso. O número de usos dessa etapa vai para `<saída>_phase2`.
+- O `ApproxLB` devolve q, o número de ativações de B_C, que é a cota inferior da prova. Para genomas desbalanceados, o `Balancer` faz com que ele não seja um limitante de verdade.
+- O C escolhido em cada passo é a componente imperfeita com **menos adjacências**, não com menos genes. Um circular inteiro de n genes contém subcromossomos de n genes e não está em T^min; escolher por genes quebrava o Lema `tmin_ativa`.
+- O `partition/CompatibilityWithText.md` compara o código com a tese. A seção "Em aberto", no começo, lista o que falta no texto (Lema `tmin_comp`, circulares inteiros no grafo, índices das relações, SOAR) e no código. `partition/BUGS.md` registra os bugs corrigidos. Atualize os dois, e `partition/doc/*.md`, quando mudar o comportamento.
+- Notas de pesquisa sobre o fator tk (`ProvaTk.md`) ficaram só em `GitHub/chim_flex`, sem versionamento.
+
+### Comportamentos que outros arquivos supõem
+
+- O `Main` iguala o número de cromossomos lineares acrescentando lineares vazios (`equalizeLinear`), como em `foundation.tex:109`. Eles aparecem na saída e contam no custo. `reduce_partition.py` e `partition_fixed.py` não os tratam; na base da tese G e H sempre têm o mesmo número de lineares, então isso não acontece.
+- O nome `<saída>_phase2` não pode casar com `<saída>_[0-9]*`, que os scripts usam para contar as saídas das instâncias.
+- O `Approx` usa a compatibilidade calculada uma vez em G₀ e atualiza o grafo incrementalmente (`subgraphOf`, `removeAdjacency`). Isso depende de a compatibilidade entre dois subcromossomos não depender da partição.
+
+### Como testar
+
+- `cd partition && stack test`. Os scripts compilam com `stack install --local-bin-path .`, e o `stack.yaml` usa Nix.
+- Ao otimizar, as saídas não devem mudar. Compile o executável antes e depois e compare as saídas, sem as linhas `# Time`, em muitas instâncias, com e sem sinal, com circulares, com intervalo (`-f`) e com números diferentes de lineares.
+- O `DB-exe` gera instâncias. O `RandDB` exige `-d`. No `RepDB`, a opção `-r` serve para duas coisas e conflita. O `DB-exe` nunca gera números diferentes de lineares; para isso, escreva um gerador próprio.
+- O FPT é exato. Para conferir, compare com uma força bruta que enumera os conjuntos de breakpoints de instâncias pequenas, incluindo circulares inteiros e circulares cortados uma vez. Foi assim que apareceu o bug #29.
+- Para contar breakpoints na saída, use a linha de genes nos lineares (número de `|`). Nos circulares, use a linha das regiões intergênicas (metade do número de `|`, arredondada para cima), porque a linha de genes não mostra o corte de fechamento.
+- Números de referência do `Approx` depois da otimização: 3 instâncias com 150 genes levam cerca de 2 s (antes, 63 s).
 
 ## 1c2c3c (`cyc/cycle/cycles.cpp`)
 
@@ -36,7 +64,7 @@ Em `tese/tese_tex/adj_graph.tex` (repositório do doutorado), seção "Seleção
 
 ## Como testar
 
-- A base `~/Documents/TESE*` não existe nesta máquina; gere instâncias sintéticas.
+- A base está em `db/` (cópia de `~/Dropbox/Context/doutorado/Dados/TESE/`, que também tem as saídas antigas em `ANS/`); gere instâncias sintéticas também.
 - Formato da entrada: 4 linhas por instância (genes da origem, regiões intergênicas da origem, genes do alvo, regiões do alvo). Os genomas lineares têm n+1 regiões e devem ser rodados com `-e`. Use `-d` quando os genomas não têm os mesmos genes e `-z` para pesos zero (2 linhas por instância).
 - O `rand` roda as iterações em paralelo com OpenMP, então a memória se multiplica pelo número de threads (16 núcleos, 27 GB nesta máquina).
 - Para comparar versões, compile o `dec` do HEAD separadamente e rode os dois nos mesmos arquivos.

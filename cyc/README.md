@@ -1,6 +1,6 @@
 # Heuristics for Cycle Packing of Adjacency Graphs and Approximation Algorithms to Rearrangement Distance on Permutations
 
-This repository has the implementation of two heuristics for the Adjacency Graph Packing problem. One is called Random Packings and tries to solve the problem by randomly generating cycle packings of the Adjacency Graph. The other is based on the Genetic Algorithm metaheuristic.
+This folder has the implementation of two heuristics for the Adjacency Graph Packing problem. One is called Random Packings and tries to solve the problem by randomly generating cycle packings of the Adjacency Graph. The other is based on the Genetic Algorithm metaheuristic.
 
 The following algorithms to approximate rearrangement distances are also implemented:
 - A 3 asymptotic approximation algorithm for Sorting by Intergenic Transposition in unsigned permutations.
@@ -21,7 +21,14 @@ With the option `-F` (`--fix-flexible`), `dist` replaces the flexible intergenic
 
 ## Usage
 
-Compile the code by running `make` and see the running options with `./dec --help` (for the cycle packing) or `./dist --help` (for the rearrangement distances). To use other algorithm when calculating the distances include a executable in the `external` folder and pass its name as the algorithm parameter. In that case, the executable should receive one instance as command line arguments (the three comma separated lists described above) and produce the distance in the standard output.
+Compile the code by running `make` (requires `cmake`, `g++` with OpenMP and the dependencies in `shell.nix`). It builds four executables, and each one shows its options with `--help`:
+
+- `dec`: finds cycle packings of the adjacency graph with the heuristics `ga` (genetic algorithm) or `rand` (random packings), using the decomposition algorithms `bfs`, `map` or `1c2c3c`;
+- `dist`: calculates rearrangement distances, mapping the genes randomly or with the packings of `dec`;
+- `part`: finds a cycle packing and writes the genome partition induced by it;
+- `toperm`: converts a pair of genomes into a permutation (with a random mapping for repeated genes).
+
+The instances of the thesis are in `../db` (see `../db/README.md`), and the scripts `../scripts/run_dec_tese.sh` and `../scripts/run_dist_tese.sh` run `dec` and `dist` on them. To use other algorithm when calculating the distances include a executable in the `external` folder and pass its name as the algorithm parameter. In that case, the executable should receive one instance as command line arguments (the three comma separated lists described above) and produce the distance in the standard output.
 
 ## References
 

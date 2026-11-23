@@ -1,0 +1,2 @@
+# instances of the data set, stored with Git LFS
+db/**/*.txt filter=lfs diff=lfs merge=lfs -text

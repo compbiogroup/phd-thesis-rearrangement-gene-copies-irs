@@ -1,4 +1,5 @@
-# Run dist on the thesis data set (the same input files as run_dec_tese.sh).
+# Run dist on a subset of the thesis data set (db/, the same input files as
+# run_dec_tese.sh).
 #
 # usage: run_dist_tese.sh map|dec
 #   map - map the genes with random mappings (k_map iterations per instance)
@@ -23,7 +24,8 @@ then
 fi
 
 # The variables INPUT_FOLDER, OUT_FOLDER, DEC_FOLDER, K_MAP and N_INST override the
-# defaults below.
+# defaults below. OP_VALS, I_VALS, L_VALS and F_VALS select the input files, with
+# the same defaults (the subset of the thesis) as in run_dec_tese.sh.
 #
 # With PART=<ALGO> (a partition algorithm of run_part_tese.sh, e.g. SOARComb),
 # dist runs on the reduced instances of that algorithm
@@ -43,7 +45,7 @@ cd "$(dirname "$0")/../cyc"
 
 make
 
-input_folder=${INPUT_FOLDER:-~/Documents/TESE_SMALL}
+input_folder=${INPUT_FOLDER:-../db}
 dec_folder=${DEC_FOLDER:-../TESE_OUT/ANS_TESE_DEC} # out_folder of run_dec_tese.sh
 out_folder=${OUT_FOLDER:-../TESE_OUT/ANS_TESE_DIST}
 
@@ -64,6 +66,19 @@ declare -A dist_algos=(
 k_map=${K_MAP:-1000}
 k_dec=1
 n_inst=${N_INST:-100} # instances per input file
+
+# subset of the data set (an empty list keeps all the values), the same in
+# run_dec_tese.sh
+op_vals=${OP_VALS-"100 200"}
+i_vals=${I_VALS-"0 50"}
+l_vals=${L_VALS-"10 100 200"}
+f_vals=${F_VALS-"0 40 100"}
+
+# Whether value is in the list (an empty list has every value)
+selected () {
+    local value=$1 list=$2
+    [ -z "$list" ] || [[ " $list " == *" $value "* ]]
+}
 
 if [ -n "$PART" ]
 then
@@ -128,6 +143,13 @@ do
         do
             [ -f "$file" ] || continue # no file with this size/operation
             name=$(basename $file .txt)
+            # values of op, I, L and F of the file
+            [[ $name =~ ^N${n}_${mod}([0-9]+)_I([0-9]+)_L([0-9]+)_F([0-9]+)$ ]] ||
+                continue
+            selected ${BASH_REMATCH[1]} "$op_vals" &&
+                selected ${BASH_REMATCH[2]} "$i_vals" &&
+                selected ${BASH_REMATCH[3]} "$l_vals" &&
+                selected ${BASH_REMATCH[4]} "$f_vals" || continue
             if [ $option == "map" ]
             then
                 run $file MAP_${dist_algo}/N${n}/${mod} "-k $k_map"

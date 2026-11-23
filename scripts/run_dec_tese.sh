@@ -1,4 +1,4 @@
-# Run dec on the thesis data set (see the README.md in input_folder).
+# Run dec on a subset of the thesis data set (db/, see db/README.md).
 # Files are input_folder/N<n>/<mod>/N<n>_<mod><op>_I<indels>_L<alphabet>_F<flex>.txt
 # with 100 instances each (4 lines per instance, genomes without caps).
 #
@@ -13,11 +13,13 @@
 # The variables INPUT_FOLDER, OUT_FOLDER, K and N_INST override the
 # defaults below.
 #
-# To run only some of the input files, set OP_VALS, I_VALS, L_VALS and/or F_VALS
-# to the values (separated by spaces) of op (conservative operations), I
-# (indels), L (alphabet) and F (flexibility) to use, e.g.
-# OP_VALS=100 I_VALS="0 50" F_VALS=0 ./run_dec_tese.sh. A variable that is not
-# set (or empty) keeps all the values of its parameter.
+# Only the input files with the values of op (conservative operations), I
+# (indels), L (alphabet) and F (flexibility) in OP_VALS, I_VALS, L_VALS and
+# F_VALS (separated by spaces) are used. The defaults are the subset of the
+# data set used in the thesis: op in 100 200, I in 0 50, L in 10 100 200 and
+# F in 0 40 100 (36 files per operation). Set a variable to change its values,
+# e.g. OP_VALS=100 I_VALS=0 ./run_dec_tese.sh, or to an empty value to keep all
+# the values of its parameter, e.g. F_VALS= ./run_dec_tese.sh.
 #
 # With PART=<ALGO> (a partition algorithm of run_part_tese.sh, e.g. SOARComb),
 # dec runs on the reduced instances of that algorithm
@@ -38,7 +40,7 @@ cd "$(dirname "$0")/../cyc"
 
 make
 
-input_folder=${INPUT_FOLDER:-~/Documents/TESE_SMALL}
+input_folder=${INPUT_FOLDER:-../db}
 out_folder=${OUT_FOLDER:-../TESE_OUT/ANS_TESE_DEC}
 
 sizes="200"
@@ -48,6 +50,13 @@ algos="bfs" # bfs, map or 1c2c3c
 k=${K:-500} # iterations of dec
 ga_params="--mut 20 -c 50"
 n_inst=${N_INST:-100} # instances per input file
+
+# subset of the data set (an empty list keeps all the values), the same in
+# run_dist_tese.sh
+op_vals=${OP_VALS-"100 200"}
+i_vals=${I_VALS-"0 50"}
+l_vals=${L_VALS-"10 100 200"}
+f_vals=${F_VALS-"0 40 100"}
 
 # Whether value is in the list (an empty list has every value)
 selected () {
@@ -90,10 +99,10 @@ do
             # values of op, I, L and F of the file
             [[ $name =~ ^N${n}_${mod}([0-9]+)_I([0-9]+)_L([0-9]+)_F([0-9]+)$ ]] ||
                 continue
-            selected ${BASH_REMATCH[1]} "$OP_VALS" &&
-                selected ${BASH_REMATCH[2]} "$I_VALS" &&
-                selected ${BASH_REMATCH[3]} "$L_VALS" &&
-                selected ${BASH_REMATCH[4]} "$F_VALS" || continue
+            selected ${BASH_REMATCH[1]} "$op_vals" &&
+                selected ${BASH_REMATCH[2]} "$i_vals" &&
+                selected ${BASH_REMATCH[3]} "$l_vals" &&
+                selected ${BASH_REMATCH[4]} "$f_vals" || continue
             for heur in $heurs
             do
                 for algo in $algos

@@ -4,9 +4,12 @@ cyc/dec
 cyc/dist
 cyc/part
 cyc/toperm
+partition/.stack-work/
+partition/MCFISP-exe
+partition/DB-exe
+partition/MCFISP.cabal
 *.o
 __pycache__/
 
 # experiment outputs (default folders of the scripts)
-ANS_TESE/
 TESE_OUT/
