@@ -412,10 +412,24 @@ vector<Vtx_id> CycleGraph::produce_random_idxs(bool is_random) {
   return idxs;
 }
 
+/* Whether the gene of vertex v can still become an indel: neither extremity is
+ * an indel, is in a cycle or has a fixed gray edge (the graph may be partially
+ * decomposed, as in the crossover and the mutation of ga) */
+bool CycleGraph::gene_free(Vtx_id v) const {
+  Vtx_id r = vertices[v].red;
+  return !vertices[v].is_indel && !vertices[v].in_cycle &&
+         vertices[v].fix_gray == NO_EDGE && !vertices[r].is_indel &&
+         !vertices[r].in_cycle && vertices[r].fix_gray == NO_EDGE;
+}
+
 // Greed heuristic to mark indel edges, always select the largest sequence of
 // indels
 void CycleGraph::mark_indel_edges(bool is_random) {
   vector<Vtx_id> idxs = produce_random_idxs(is_random);
+  /* genes whose block cannot be an indel (with fixed adjacencies); this does
+   * not change while indels are marked, since it depends only on the caps and
+   * on the fixed gray edges */
+  vector<bool> blocked(size(), false);
 
   int indel_size, indel_size_max;
   do {
@@ -425,7 +439,7 @@ void CycleGraph::mark_indel_edges(bool is_random) {
     indel_size = 0;
     for (Vtx_id i : idxs) {
       bool is_indel =
-          !vertices[i].is_indel && vertices[i].vtx_type != Cap &&
+          vertices[i].vtx_type != Cap && !blocked[i] && gene_free(i) &&
           indel_count[vertices[i].gene_val] * vertices[i].indel_update < 0;
       if (is_indel) {
         indel_size++;
@@ -446,7 +460,7 @@ void CycleGraph::mark_indel_edges(bool is_random) {
     }
 
     for (Vtx_id i : indel_idxs_max) {
-      if (vertices[i].is_indel ||
+      if (!gene_free(i) ||
           indel_count[vertices[i].gene_val] * vertices[i].indel_update >= 0) {
         continue;
       }
@@ -455,6 +469,8 @@ void CycleGraph::mark_indel_edges(bool is_random) {
         vector<Vtx_id> out;
         if (indel_closure(i, map<Vtx_id, Vtx_id>(), out)) {
           commit_indel(i, true);
+        } else {
+          blocked[i] = blocked[vertices[i].red] = true;
         }
         continue;
       }

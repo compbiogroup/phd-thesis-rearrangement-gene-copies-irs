@@ -395,3 +395,27 @@ Priority: items marked ⚠️ affect correctness of reported distances or crash 
   on the decompositions of `-D` (multiple chromosomes allowed, via
   `CycleGraph::rebuild_cycles`) or on random mappings (`decompose(true, "map")`),
   and `run_dist_tese.sh` now uses it for SDCJ.
+
+## 11. Found on 2026-11-23 (`ga 1c2c3c` on the thesis data set)
+
+- [X] ⚠️ **`ga 1c2c3c` crashes or hangs** — e.g.
+  `dec ga 1c2c3c -e -i N200/SDCJ/N200_SDCJ100_I50_L100_F0.txt --mut 20 -c 50`
+  (segmentation fault; with ASan, a heap-buffer-overflow in `cycle_potation` called by
+  `rem_cycle` in `GA::mutation`, and in other instances an endless walk in
+  `cycle_potation`). The crossover and the mutation of `ga` decompose a graph that
+  already has cycles, and `decompose_1c_2c_3c` starts with `mark_indel_edges`, which
+  marked as indels genes that were in a cycle or had a fixed gray edge. The walks of
+  those cycles then followed the red edge instead of the gray one and did not close.
+  `bfs` and `map` do not call `mark_indel_edges`, and `rand` always starts from an
+  empty graph, so only `ga 1c2c3c` was affected. Fixed by marking only the genes whose
+  extremities are free (`gene_free`). With `rand -k 1` (deterministic), the outputs
+  of `1c2c3c` and `bfs` did not change, with and without `-f`/`-f -p`.
+- [X] ⚠️ **`1c2c3c` with `-f` hangs** — e.g. instance 5 of
+  `N200/SDCJ/N200_SDCJ100_I50_L100_F0.txt` with the SOARComb `FIX` file (with any
+  heuristic; `bfs` and `map` are not affected). With fixed adjacencies,
+  `mark_indel_edges` marks an indel only if the whole block can be an indel
+  (`indel_closure`). When the closure failed for every gene of the largest sequence
+  of candidates, nothing changed and the same sequence was chosen forever. The
+  closure depends only on the caps and on the fixed gray edges, which do not change
+  while indels are marked, so these genes are now left out of the candidates
+  (`blocked`). The outputs of the instances that finished before did not change.

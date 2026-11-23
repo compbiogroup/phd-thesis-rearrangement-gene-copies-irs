@@ -206,6 +206,7 @@ private:
    * edge (meet in the middle). */
   void add_small_cycles(int s, bool is_random);
   bool clean_edge_free(Vtx_id x) const;
+  bool gene_free(Vtx_id v) const;
   void back_half_paths(Vtx_id c, int r, bool is_random, vector<Vtx_id> &path,
                        unordered_map<Vtx_id, vector<vector<Vtx_id>>> &paths);
   bool forward_half_paths(
