@@ -1,0 +1,12 @@
+# build
+cyc/build/
+cyc/dec
+cyc/dist
+cyc/part
+cyc/toperm
+*.o
+__pycache__/
+
+# experiment outputs (default folders of the scripts)
+ANS_TESE/
+TESE_OUT/
