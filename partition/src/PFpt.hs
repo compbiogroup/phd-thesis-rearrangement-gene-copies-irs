@@ -14,7 +14,11 @@
 -- elements between the alphabets. Genes that match both directly and in reverse
 -- (every gene of an unsigned reverse instance, and the caps 0) get witnesses in both
 -- directions: singletons of this kind are not fixed in the initial sample but added
--- by the branching rule, which tries both directions (findAllLimits).
+-- by the branching rule, which tries both directions (findAllLimits). Unbalanced
+-- genomes are handled by branching rule 2, which chooses the genes of the exclusive
+-- blocks (the removed genes). The search starts with the best partition of the
+-- heuristics Greedy and SOARComb as the best one found, so the pruning works from
+-- the start and the result is never worse than theirs.
 -- Copyright   : (c) Gabriel Siqueira, 2023
 -- License     : BSD3
 -- Maintainer  : gabriel.gabrielhs@gmail.com
@@ -31,14 +35,17 @@ import Control.Monad (void, when)
 import Data.Either (isRight)
 import Data.Foldable (toList)
 import Data.Map qualified as Map
-import Data.Maybe (fromMaybe, isNothing, listToMaybe)
+import Data.List (group, minimumBy)
+import Data.Maybe (catMaybes, fromMaybe, isNothing, listToMaybe)
 import Data.MultiMap (MultiMap)
 import Data.MultiMap qualified as MMap
+import Data.Ord (comparing)
 import Data.Set qualified as Set
 import GHC.Conc (threadDelay)
-import Genomes (CIdx, ChromList, Chromosome (isCircular, nextIdx, prevIdx), GIdx, GenIdx (idxToInt), GeneMap, Genome (alphabet, getGene, size, subGenome), Matcher (isDirectMatch, isMatch, isReverseMatch), MultiChromosome (getChromosome, getChromosomes, numChromosomes), adjacencies, allGIdx, geneMapLookup, occurrence, positionMap, singletonOnBoth)
+import Genomes (CIdx, Gene, ChromList, Chromosome (isCircular, nextIdx, prevIdx), GIdx, GenIdx (idxToInt), GeneMap, Genome (alphabet, getGene, size, subGenome), Matcher (isDirectMatch, isMatch, isReverseMatch), MultiChromosome (getChromosome, getChromosomes, numChromosomes), adjacencies, allGIdx, geneMapLookup, occurrence, positionMap, singletonOnBoth)
 import LocalBase
-import Balancer (occBalance)
+import PGreedy (greedyPartition)
+import PSOAR (soarPartition)
 import Partition (CommonPartition, costUnbalanced, mkCommonPartition2)
 
 type FptCtx c1 c2 = (Chromosome c1, Chromosome c2, GIdx c1 ~ GIdx c2, Ord (GIdx c1), GenIdx (GIdx c1))
@@ -76,35 +83,49 @@ data SampleGraph m c1 c2 i = SG
     sg_posG :: GeneMap [i],
     sg_posH :: GeneMap [i],
     sample :: Sample i,
-    edges :: MultiMap (Vertex i) (Edge i)
+    edges :: MultiMap (Vertex i) (Edge i),
+    -- genes chosen to be in exclusive blocks (the set D), they are not vertices of
+    -- the graph (they have no edges)
+    removed :: Set.Set (Vertex i)
   }
 
 instance (Show g1, Show g2, Show i) => Show (SampleGraph m g1 g2 i) where
-  show SG {..} = unlines [show sg_g, show sg_h, show sample, edges_str]
+  show SG {..} = unlines [show sg_g, show sg_h, show sample, show (Set.toList removed), edges_str]
     where
       edges_str = unlines . map show . MMap.toList $ edges
 
 fptPartition :: (FptCtx c1 c2, Matcher m c1 c2) => Int -> m c1 c2 -> ChromList c1 -> ChromList c2 -> IO (Maybe (CommonPartition c1 c2), Bool)
-fptPartition time_limit matcher g h
-  -- TODO: the sample graph only works with balanced genomes
-  | any (/= 0) (occBalance g h) = error undefinedError
-  | otherwise = do
-      -- build the initial sample graph before the time limit starts
-      sg0' <- evaluate sg0
-      best_sg <- newMVar Nothing
-      full_comp <- isRight <$> race (threadDelay time_limit) (runFpt best_sg sg0')
-      maybe_sg <- fmap snd <$> readMVar best_sg
-      return
-        . (,full_comp) -- Add the bool indicating whether the computation finish
-        . fmap
-          ( sampleGraphToPartition
-              . (\sg' -> assert (checkDegrees 1 1 sg') sg')
-              . finalizeCorrespondence
-              . (\sg' -> assert (checkDegrees 1 2 sg') sg')
-          )
-        $ maybe_sg
+fptPartition time_limit matcher g h = do
+  -- build the initial sample graph and the partitions of the heuristics before the
+  -- time limit starts
+  sg0' <- evaluate sg0
+  cost0 <- evaluate (fst initial)
+  best_sg <- newMVar (cost0, Nothing)
+  full_comp <- isRight <$> race (threadDelay time_limit) (runFpt best_sg sg0')
+  maybe_sg <- snd <$> readMVar best_sg
+  return
+    . (,full_comp) -- Add the bool indicating whether the computation finish
+    . Just
+    . maybe
+      (snd initial) -- no sample graph is better than the heuristics
+      ( sampleGraphToPartition
+          . (\sg' -> assert (checkDegrees 1 1 sg') sg')
+          . finalizeCorrespondence
+          . (\sg' -> assert (checkDegrees 1 2 sg') sg')
+      )
+    $ maybe_sg
   where
-    sg0 = (\sg -> assert (checkDegrees 0 2 sg) sg) $ createSampleGraph matcher g h sample0
+    -- best partition of the heuristics (the first one on ties), with its cost
+    initial =
+      minimumBy
+        (comparing fst)
+        [(costUnbalanced matcher p, p) | p <- [greedyPartition False matcher g h, soarPartition True matcher g h]]
+    sg0 = (\sg -> assert (checkDegrees 0 2 sg) sg) . removeAbsent $ createSampleGraph matcher g h sample0
+    -- a gene whose label does not occur in the other genome is in an exclusive block
+    -- in every partition (branching rule 2 has a single branch for it), so it is
+    -- removed from the start, which also lets toBig count its block
+    removeAbsent sg = foldr removeVertex sg (absent True g posMapH ++ absent False h posMapG)
+    absent inG q posMapOther = [Vtx inG idx | idx <- allGIdx q, occurrence posMapOther (getGene idx q) == 0]
     -- singletons whose two occurrences match in exactly one direction. A singleton
     -- that matches both directly and in reverse (every gene of an unsigned reverse
     -- instance) is left out: its isolated vertex is a rare odd path, so branching
@@ -123,73 +144,121 @@ fptPartition time_limit matcher g h
     posMapG = positionMap g
     posMapH = positionMap h
 
--- TODO: Find first solution without branch 2
--- The MVar keeps the best sample graph found so far, with its cost.
-runFpt :: (FptCtx c1 c2, Matcher m c1 c2) => MVar (Maybe (Int, SampleGraph m c1 c2 (GIdx (ChromList c1)))) -> SampleGraph m c1 c2 (GIdx (ChromList c1)) -> IO ()
-runFpt best_sg = branch1
+-- The MVar keeps the cost of the best partition found so far and its sample graph
+-- (Nothing while the best one is the initial partition of the heuristics).
+runFpt :: (FptCtx c1 c2, Matcher m c1 c2) => MVar (Int, Maybe (SampleGraph m c1 c2 (GIdx (ChromList c1)))) -> SampleGraph m c1 c2 (GIdx (ChromList c1)) -> IO ()
+runFpt best_sg sg0 = branch sg0
   where
+    -- every label occurs as many times in G as in H (no gene is ever removed)
+    balanced = fmap length (sg_posG sg0) == fmap length (sg_posH sg0)
+    branch !sg = do
+      test <- toBig sg
+      if
+        | test -> return ()
+        | Just path <- getRareOddPath sg -> mapM_ branch' (rule1 sg path)
+        | Just path <- getAbundantOddPath sg -> mapM_ branch' (rule2 sg path)
+        | otherwise -> selectSG sg
+    branch' sg = assert (checkDegrees 0 2 sg) $ branch sg
+
     -- Branching Rule 1: If the sample graph sg contains a connected component which is a rare odd path
     -- (u_1, v_1, ... ,v_{l−1}, u_l), then do the following for each vertex u_i, 1 <= i <= l: for each
     -- vertex v such that it has the same label as u_i, it is not in a match of the sample, and it is
     -- from a different string than u_i, branch into the case to add (u_i, v) to the sample, if (u_i, v)
     -- is not parallel to any match of the sample.
-    branch1 !sg = do
-      test <- toBig sg
-      if
-        | test -> return ()
-        | isNothing maybe_oddPath -> selectSG sg -- branch2 sg <<-- TODO: add branch2
-        | null branch_edges -> return ()
-        | otherwise ->
-            mapM_
-              ( \edge ->
-                  let sg' = addBlackEdge edge sg
-                   in assert (checkDegrees 0 2 sg') $ branch1 sg'
-              )
-              branch_edges
-      where
-        branch_edges = maybe [] (edgesFromRareOddPath sg) maybe_oddPath
-        maybe_oddPath = getRareOddPath sg
+    rule1 sg path = [addBlackEdge bw sg | u <- largerSide path, bw <- candidateWitnesses sg u]
 
-    -- Branching Rule 2: If the partial sample graph sg contains a connected component which is an abundant
-    -- odd path (u_1, v_1, ... ,v_{l−1}, u_l), then do the following: for each vertex u_i, 1 <= i <= l:
-    -- branch into a new partial sample graph without u_i and without edges that are no longer valid.
-    -- branch2 !sg = do
-    --   test <- toBig sg
-    --   if
-    --       | test -> return ()
-    --       | isNothing maybe_oddPath -> selectSG sg
-    --       | null branch_vertices -> return ()
-    --       | otherwise ->
-    --           mapM_
-    --             ( \vtx ->
-    --                 let sg' = removeVertex vtx sg
-    --                  in assert (checkDegrees 0 2 sg') $ branch2 sg'
-    --             )
-    --             branch_vertices
-    --   where
-    --     branch_vertices = maybe [] evens maybe_oddPath
-    --     maybe_oddPath = getAbundantOddPath sg
+    -- Branching Rule 2: If the sample graph sg contains a connected component which is an abundant
+    -- odd path (u_1, v_1, ... ,v_{l−1}, u_l), then do the following for each vertex u_i, 1 <= i <= l:
+    -- branch into the case to remove u_i (put it in an exclusive block), if fewer than
+    -- |occ(a, G) - occ(a, H)| genes with the label a of u_i were removed, and, as in rule 1, into
+    -- the cases to add each candidate (u_i, v) to the sample.
+    rule2 sg path =
+      [ sg'
+        | u <- largerSide path,
+          sg' <- [removeVertex u sg | canRemove sg u] ++ [addBlackEdge bw sg | bw <- candidateWitnesses sg u]
+      ]
 
-    -- The sample only grows in a branch and each witness is at least one block on
-    -- each side, so the cost (breakpoints of both partitions) of any partition from
-    -- this branch is at least 2|sample| minus one per chromosome (the last block of a
-    -- linear chromosome or a whole circular chromosome has no breakpoint).
+    -- The sample and the removed genes only grow in a branch. Each witness is at least
+    -- one common block on each side, and each run of removed genes that can not join
+    -- another one is at least one exclusive block, so the cost (breakpoints of both
+    -- partitions) of any partition from this branch is at least the number of these
+    -- blocks minus one per chromosome (the last block of a linear chromosome or a
+    -- whole circular chromosome has no breakpoint).
     toBig sg = do
-      -- TODO: Update this function to deal with unbalance strings
-      maybe_best <- readMVar best_sg
-      case maybe_best of
-        Nothing -> return False
-        Just (best_cost, _) -> return $ 2 * length (sample sg) - numChrs sg >= best_cost
+      (best_cost, _) <- readMVar best_sg
+      return $ 2 * length (sample sg) + (if balanced then 0 else exclusiveRuns sg) - numChrs sg >= best_cost
     numChrs sg = numChromosomes (sg_g sg) + numChromosomes (sg_h sg)
     selectSG sg = do
-      maybe_best <- readMVar best_sg
+      (best_cost, _) <- readMVar best_sg
       let c = cost sg
-      case maybe_best of
-        Nothing ->
-          void (swapMVar best_sg $! Just (c, sg))
-        Just (best_cost, _) ->
-          -- strict, so the previous best is not kept inside a thunk
-          when (c < best_cost) $ void (swapMVar best_sg $! Just (c, sg))
+      -- strict, so the previous best is not kept inside a thunk
+      when (c < best_cost) $ void (swapMVar best_sg $! (c, Just sg))
+
+-- | Vertices of an odd path in the genome with more vertices in it (the genome of
+-- its ends).
+largerSide :: [Vertex i] -> [Vertex i]
+largerSide vertices = if length verticesG > length verticesH then verticesG else verticesH
+  where
+    verticesG = filter vInG vertices
+    verticesH = filter (not . vInG) vertices
+
+-- | Gene of a vertex.
+geneOf :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> Vertex (GIdx (ChromList c1)) -> Gene
+geneOf SG {..} v = if vInG v then getGene (vIdx v) sg_g else getGene (vIdx v) sg_h
+
+-- | Number of genes with the label of the gene that must be in exclusive blocks
+-- (|occ(a, G) - occ(a, H)|).
+excess :: SampleGraph m c1 c2 i -> Gene -> Int
+excess SG {..} gene = abs (occurrence sg_posG gene - occurrence sg_posH gene)
+
+-- | Number of removed genes with each label.
+removedCount :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> Map.Map Gene Int
+removedCount sg = Map.fromListWith (+) [(canonicOri (geneOf sg v), 1) | v <- Set.toList (removed sg)]
+
+-- | Whether u can be removed: fewer than |occ(a, G) - occ(a, H)| genes with its
+-- label a were removed.
+canRemove :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> Vertex (GIdx (ChromList c1)) -> Bool
+canRemove sg u = Map.findWithDefault 0 (canonicOri gene) (removedCount sg) < excess sg gene
+  where
+    gene = geneOf sg u
+
+-- | Lower bound on the number of exclusive blocks of the partitions of a branch:
+-- the maximal runs of removed genes of each chromosome, where two runs are counted
+-- separately only if a gene between them can never be removed (a gene of a black
+-- edge, or a gene whose label is not abundant in its genome or already has all
+-- its genes in excess removed). Otherwise the genes between them may be removed
+-- later and the runs become a single block. At the end of a branch each label a
+-- has exactly |occ(a, G) - occ(a, H)| removed genes, so when the genes of a label
+-- that can still be removed are exactly the ones it still needs, they are counted
+-- as removed.
+exclusiveRuns :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> Int
+exclusiveRuns sg@SG {..} = runsOf True sg_g + runsOf False sg_h
+  where
+    counts = removedCount sg
+    runsOf inG q = sum [chrRuns chr (map (status . Vtx inG . (chri,)) (allGIdx chr)) | (chri, chr) <- zip [1 ..] (getChromosomes q)]
+    allVertices = map (Vtx True) (allGIdx sg_g) ++ map (Vtx False) (allGIdx sg_h)
+    label = canonicOri . geneOf sg
+    missing v = excess sg (geneOf sg v) - Map.findWithDefault 0 (label v) counts
+    -- number of genes of each label that can still be removed
+    candidates = Map.fromListWith (+) [(label v, 1 :: Int) | v <- allVertices, isNothing (baseStatus v)]
+    -- Just True for removed genes, Just False for genes that can never be removed
+    status v = case baseStatus v of
+      Nothing | Map.findWithDefault 0 (label v) candidates == missing v -> Just True
+      st -> st
+    baseStatus v
+      | v `Set.member` removed = Just True
+      | any eBlack (edges MMap.! v) = Just False
+      | not (abundant v) || missing v <= 0 = Just False
+      | otherwise = Nothing
+    abundant v = (if vInG v then id else flip) (>) (occurrence sg_posG gene) (occurrence sg_posH gene)
+      where
+        gene = geneOf sg v
+    chrRuns chr sts =
+      let grps = map localHead . group . catMaybes $ sts
+          rs = length (filter id grps)
+          -- the first and the last runs of a circular chromosome are joined
+          joined = isCircular chr && length grps > 1 && localHead grps && last grps
+       in if joined then rs - 1 else rs
 
 -- TODO: Change the implementation so that the partition do not need to be fully calculated
 -- The cost of the partition correspondent to the sample graph
@@ -203,15 +272,22 @@ sampleGraphToPartition (SG {..}) = mkCommonPartition2 sg_matcher sg_g bg sg_h bh
     bh = breaksOf False sg_h
     -- an adjacency (i, i') is a breakpoint if its genes come from different witnesses,
     -- or if it closes a circular chromosome covered by a single witness (i' is the first
-    -- gene of the witness), unless that witness also covers the closing adjacency
+    -- gene of the witness), unless that witness also covers the closing adjacency. The
+    -- removed genes form the exclusive blocks: an adjacency with one removed gene is a
+    -- breakpoint, and one with two removed genes is not.
     breaksOf inG q =
       Set.fromList
         [ (chri, i)
           | (chri, chr) <- zip [1 ..] (getChromosomes q),
             (i, i') <- adjacencies chr,
-            let p = parentOf inG (chri, i),
-            p /= parentOf inG (chri, i') || (chri, i') == startOf inG p && not (closesCircle p)
+            isBreak inG (chri, i) (chri, i')
         ]
+    isBreak inG idx idx'
+      | isRemoved idx || isRemoved idx' = isRemoved idx /= isRemoved idx'
+      | otherwise = p /= parentOf inG idx' || idx' == startOf inG p && not (closesCircle p)
+      where
+        p = parentOf inG idx
+        isRemoved = (`Set.member` removed) . Vtx inG
     parentOf inG idx = eParent . localHead . (\l -> if null l then error patternError else l) $ edges MMap.! Vtx inG idx
 
     -- first gene of the witness (in the order of the chromosome)
@@ -246,16 +322,22 @@ getAbundantOddPath = listToMaybe . getAbundantOddPaths
 
 -- return vertices from each rare odd path
 getRareOddPaths :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> [[Vertex (GIdx (ChromList c1))]]
-getRareOddPaths = getOddPaths True True
+getRareOddPaths sg = filter (isRare sg . localHead) (getOddPaths sg)
 
 -- return vertices from each abundant odd path
 getAbundantOddPaths :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> [[Vertex (GIdx (ChromList c1))]]
-getAbundantOddPaths sg = getOddPaths False True sg ++ getOddPaths False False sg
+getAbundantOddPaths sg = filter (not . isRare sg . localHead) (getOddPaths sg)
 
-getOddPaths :: (FptCtx c1 c2) => Bool -> Bool -> SampleGraph m c1 c2 (GIdx (ChromList c1)) -> [[Vertex (GIdx (ChromList c1))]]
-getOddPaths takeRare initialVtxInG sg@(SG {..}) = result_list
+-- | The odd paths of the graph, each one starting at one of its ends (whose genome
+-- has more vertices in the path, so the path is rare if the label of its first
+-- vertex is rare). The paths are found from the vertices of G, plus the isolated
+-- vertices of H (every other path has a vertex in G).
+getOddPaths :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> [[Vertex (GIdx (ChromList c1))]]
+getOddPaths SG {..} = result_list ++ isolatedH
   where
-    initialVertices = filter ((if takeRare then id else not) . isRare sg) . map (Vtx initialVtxInG) $ if initialVtxInG then (allGIdx sg_g) else (allGIdx sg_h)
+    present = (`Set.notMember` removed)
+    initialVertices = filter present . map (Vtx True) $ allGIdx sg_g
+    isolatedH = [[v] | v <- filter present . map (Vtx False) $ allGIdx sg_h, null (edges MMap.! v)]
     result_list =
       snd $
         foldr getOddPathWithVertex (Set.empty, []) initialVertices
@@ -340,7 +422,7 @@ checkParallel g h bw bw' = aligned && any matchH offsetsG
 
 -- check if every vertex has degree at least low and at most up, and it is connect only
 -- with vertices of the other genome. In case of black edges, the degree must be
--- exactly 1.
+-- exactly 1. Removed genes have no edges.
 checkDegrees :: (FptCtx c1 c2) => Int -> Int -> SampleGraph m c1 c2 (GIdx (ChromList c1)) -> Bool
 checkDegrees low up SG {..} =
   all (checkDegree . Vtx True) (allGIdx sg_g)
@@ -348,35 +430,35 @@ checkDegrees low up SG {..} =
   where
     checkDegree v =
       let l = edges MMap.! v
-          (low', up') = if any eBlack l then (1, 1) else (low, up)
+          (low', up')
+            | v `Set.member` removed = (0, 0)
+            | any eBlack l = (1, 1)
+            | otherwise = (low, up)
        in low' <= length l
             && length l <= up'
             && not (any ((vInG v ==) . vInG . eOther) l)
 
--- Get from an rare odd path the edges that can be include as a block witness
-edgesFromRareOddPath :: (FptCtx c1 c2, Matcher m c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> [Vertex (GIdx (ChromList c1))] -> [BlockWitness (GIdx (ChromList c1))]
-edgesFromRareOddPath sg@(SG {..}) vertices = do
-  v <- if length verticesG > length verticesH then verticesG else verticesH
-  filter (not . checkBWPairs) . getNewEdges $ v
+-- | Candidate witnesses of a vertex u of an odd path: the witnesses (with each
+-- possible window) of the pairs of u and a gene v of the other genome with the same
+-- label, where v is not in a black edge (checkConflict) nor removed, that are not
+-- parallel to a witness of the sample.
+candidateWitnesses :: (FptCtx c1 c2, Matcher m c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> Vertex (GIdx (ChromList c1)) -> [BlockWitness (GIdx (ChromList c1))]
+candidateWitnesses sg@(SG {..}) v = filter (not . checkBWPairs) getNewEdges
   where
     checkBWPairs bw = any (\bw' -> checkParallel sg_g sg_h bw bw' || checkConflict bw bw') sample
-    verticesG = filter vInG vertices
-    verticesH = filter (not . vInG) vertices
-    getNewEdges v =
+    getNewEdges =
       concatMap (findAllLimits sg) $
         if vInG v
-          then (vIdx v,) <$> getVertexInQ sg_h (getGene (vIdx v) sg_g)
-          else (,vIdx v) <$> getVertexInQ sg_g (getGene (vIdx v) sg_h)
+          then (vIdx v,) <$> getVertexInQ False sg_h (getGene (vIdx v) sg_g)
+          else (,vIdx v) <$> getVertexInQ True sg_g (getGene (vIdx v) sg_h)
     -- return idx of Q including a vertex with label equal to the one of gene
-    getVertexInQ q gene =
+    getVertexInQ inG q gene =
       filter
         ( \idx ->
             canonicOri (getGene idx q) == canonicOri gene
+              && Vtx inG idx `Set.notMember` removed
         )
         (allGIdx q)
-
--- let vsH = map (vIdx . eOther) $ edges MMap.! Vtx True idxG
---  in (idxH `elem` vsH)
 
 createSampleGraph :: (FptCtx c1 c2, Matcher m c1 c2) => m c1 c2 -> ChromList c1 -> ChromList c2 -> [(GIdx (ChromList c1), GIdx (ChromList c2))] -> SampleGraph m c1 c2 (GIdx (ChromList c1))
 createSampleGraph matcher g h = foldr addPair sg0
@@ -388,7 +470,7 @@ createSampleGraph matcher g h = foldr addPair sg0
        in if any (\bw' -> checkParallel g h bw bw' || checkConflict bw bw') (sample sg)
             then sg
             else addBlackEdge bw sg
-    sg0 = SG matcher g h posMapG posMapH [] MMap.empty
+    sg0 = SG matcher g h posMapG posMapH [] MMap.empty Set.empty
     posMapG = positionMap g
     posMapH = positionMap h
 
@@ -482,11 +564,12 @@ addBlackEdge bw sg = sg {sample = sample', edges = edges'''}
     -- If dir is False we are going from right to left if it is True we are going from
     -- left to right.
     addEdges dirG dirH (idxG, idxH) aux_edges =
-      if not dirG && idxG == fst (w_left_pair bw) || dirG && idxG == fst (w_right_pair bw) || hasBlackEdge vG || hasBlackEdge vH
+      if not dirG && idxG == fst (w_left_pair bw) || dirG && idxG == fst (w_right_pair bw) || hasBlackEdge vG || hasBlackEdge vH || isRemoved vG || isRemoved vH
         then aux_edges
         else addEdges dirG dirH (idxG', idxH') aux_edges'
       where
         hasBlackEdge v = let l = aux_edges MMap.! v in not (null l) && eBlack (localHead l)
+        isRemoved v = v `Set.member` removed sg
         -- the witness limits are reached before the end of a linear chromosome
         idxG' = fromMaybe (error logicError) $ stepIdx (sg_g sg) dirG idxG
         idxH' = fromMaybe (error logicError) $ stepIdx (sg_h sg) dirH idxH
@@ -500,8 +583,12 @@ addBlackEdge bw sg = sg {sample = sample', edges = edges'''}
 stepIdx :: (Chromosome c) => ChromList c -> Bool -> (CIdx, GIdx c) -> Maybe (CIdx, GIdx c)
 stepIdx q dir (c, i) = (c,) <$> (if dir then nextIdx else prevIdx) (getChromosome c q) i
 
+-- | Put a gene in an exclusive block: remove the vertex and the green edges that
+-- are no longer valid (the ones with the gene between them and their parent).
 removeVertex :: (FptCtx c1 c2) => Vertex (GIdx (ChromList c1)) -> SampleGraph m c1 c2 (GIdx (ChromList c1)) -> SampleGraph m c1 c2 (GIdx (ChromList c1))
-removeVertex = cleanEdges
+removeVertex v sg = sg' {removed = Set.insert v (removed sg')}
+  where
+    sg' = cleanEdges v sg
 
 -- Remove any green edge that is no longer valid after the inclusion of a new black
 -- edge incident on v or after the deletion of v.
@@ -553,8 +640,10 @@ cleanEdges v sg@(SG {..}) = sg {edges = edges'}
 finalizeCorrespondence :: (FptCtx c1 c2) => SampleGraph m c1 c2 (GIdx (ChromList c1)) -> SampleGraph m c1 c2 (GIdx (ChromList c1))
 finalizeCorrespondence sg = sg2
   where
-    (seen1, sg1) = foldr (changePaths . Vtx True) (Set.empty, sg) (allGIdx . sg_g $ sg)
-    sg2 = snd $ foldr (changeCycle . Vtx True) (seen1, sg1) (allGIdx . sg_g $ sg1)
+    -- the removed genes have no edges
+    verticesG = filter (`Set.notMember` removed sg) . map (Vtx True) . allGIdx . sg_g $ sg
+    (seen1, sg1) = foldr changePaths (Set.empty, sg) verticesG
+    sg2 = snd $ foldr changeCycle (seen1, sg1) verticesG
 
     changeCycle v (seen, sg_aux) =
       if v `Set.member` seen

@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module GenomesCheck (tests, genGenome, genRGenome, genMultiPair, rearrangeGenome, rearrangeAndFlexibilizeGenome, GenomeWrapper (..)) where
+module GenomesCheck (tests, genGenome, genRGenome, genMultiPair, genMultiPairWith, rearrangeGenome, rearrangeAndFlexibilizeGenome, GenomeWrapper (..)) where
 
 import Control.Monad.Random (replicateM)
 import Data.ByteString.Char8 qualified as BS
@@ -226,7 +226,14 @@ prop_turnCircularIsInverseOfCut = property $ do
 -- many repeated genes. H is G after k random DCJs, made flexible. If unbal is
 -- True, some positions of G and of H receive exclusive genes before the DCJs.
 genMultiPair :: Bool -> Sign -> Int -> Gen (ChromList GenesIRsR, ChromList GenesIRsF)
-genMultiPair unbal sign size_lim = do
+genMultiPair unbal = genMultiPairWith unbal False 50
+
+-- | As genMultiPair. If shared is True, a replaced position may also receive a gene
+-- of the alphabet, so that some labels occur in both genomes with distinct numbers
+-- of occurrences. The flexibility of H is at most max_flex (0 gives the equality
+-- relation).
+genMultiPairWith :: Bool -> Bool -> Int -> Sign -> Int -> Gen (ChromList GenesIRsR, ChromList GenesIRsF)
+genMultiPairWith unbal shared max_flex sign size_lim = do
   nchr <- Gen.int (Range.linear 1 3)
   alph <- Gen.int (Range.linear 1 6)
   chrs <- replicateM nchr $ do
@@ -235,21 +242,23 @@ genMultiPair unbal sign size_lim = do
     genes <- replicateM n (signGene =<< Gen.int (Range.linear 1 alph))
     irs <- replicateM (if chtype == Linear then n + 1 else n) genIR
     return (chtype, genes, irs)
-  chrsG <- if unbal then mapM (exclusive 100) chrs else return chrs
-  chrsH <- if unbal then mapM (exclusive 200) chrs else return chrs
+  chrsG <- if unbal then mapM (exclusive alph 100) chrs else return chrs
+  chrsH <- if unbal then mapM (exclusive alph 200) chrs else return chrs
   k <- Gen.int (Range.linear 0 (2 * nchr + 2))
   h <- applyDCJs k (mkMC chrsH)
-  f <- Gen.int (Range.linear 0 50)
+  f <- Gen.int (Range.linear 0 max_flex)
   return (mkMC chrsG, flexibilizeMC f h)
   where
     mkMC = ChromList [0] . map (\(chtype, genes, irs) -> mkRGenome chtype (Just (0, 0)) sign genes irs)
     signGene a = case sign of
       Signed -> Gen.element [a, -a]
       Unsigned -> return a
-    -- replace each gene by a new exclusive gene with probability 1/5
-    exclusive base (chtype, genes, irs) = do
-      genes' <- mapM (\(i, a) -> Gen.frequency [(4, return a), (1, signGene (base + i))]) (zip [1 ..] genes)
+    -- replace each gene by a new exclusive gene with probability 1/5 (or, if
+    -- shared, by a new gene or a gene of the alphabet)
+    exclusive alph base (chtype, genes, irs) = do
+      genes' <- mapM (\(i, a) -> Gen.frequency [(4, return a), (1, signGene =<< newLabel alph (base + i))]) (zip [1 ..] genes)
       return (chtype, genes', irs)
+    newLabel alph new = if shared then Gen.choice [return new, Gen.int (Range.linear 1 alph)] else return new
 
     -- same choice of positions as DB.applyDCJs
     applyDCJs :: Int -> ChromList GenesIRsR -> Gen (ChromList GenesIRsR)

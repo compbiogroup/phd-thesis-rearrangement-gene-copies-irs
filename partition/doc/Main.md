@@ -11,6 +11,7 @@ The command-line program that runs a partition algorithm on every instance of an
 | `-o, --outfile OFILE` | Output prefix; instance *k* is written to `OFILE_000k` |
 | `--no-par` | Process the instances one after another instead of in parallel (`parallel-io`) |
 | `-s, --signed` | The genes are signed |
+| `-t, --time-limit SECONDS` | Time limit of the FPT for each instance (default 600). When it is reached, the best partition found is written as a partial solution |
 
 ## Input format
 
@@ -36,7 +37,7 @@ The matcher is always `RFRM` (rigid G, flexible H, direct or reverse matches).
 | `SOAR` / `SOARComb` | `soarPartition False/True` ([PSOAR](PSOAR.md)) |
 | `Greedy` / `GreedySin` | `greedyPartition False/True` ([PGreedy](PGreedy.md)) |
 | `Approx` | `balancedPartition approxPartition` ([Balancer](Balancer.md) + [PApprox](PApprox.md)) |
-| `FPT` | `fptPartition 600000000` ([PFpt](PFpt.md)), with a 10-minute limit |
+| `FPT` | `fptPartition` ([PFpt](PFpt.md)), with the time limit of `-t` (10 minutes by default) |
 | `ApproxLB` | `balancedLowerBound approxLowerBound`: writes only the lower bound on the number of breakpoints of both genomes (see [Balancer](Balancer.md)) |
 
 ## Output

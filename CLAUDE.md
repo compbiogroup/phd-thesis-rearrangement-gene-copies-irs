@@ -27,6 +27,9 @@
 - O C escolhido em cada passo é a componente imperfeita com **menos adjacências**, não com menos genes. Um circular inteiro de n genes contém subcromossomos de n genes e não está em T^min; escolher por genes quebrava o Lema `tmin_ativa`.
 - O `partition/CompatibilityWithText.md` compara o código com a tese. A seção "Em aberto", no começo, lista o que falta no texto (Lema `tmin_comp`, circulares inteiros no grafo, índices das relações, SOAR) e no código. `partition/BUGS.md` registra os bugs corrigidos. Atualize os dois, e `partition/doc/*.md`, quando mudar o comportamento.
 - Notas de pesquisa sobre o fator tk (`ProvaTk.md`) ficaram só em `GitHub/chim_flex`, sem versionamento.
+- O FPT (`PFpt.hs`) aceita genomas desbalanceados: Regra 2 da tese, com o conjunto D no campo `removed` do grafo. Os genes de rótulos ausentes no outro genoma vão para D já no grafo inicial. A poda soma a `2|A| − n_c` um limitante de blocos exclusivos (`exclusiveRuns`), calculado só quando algum rótulo tem ocorrências diferentes. A busca começa com a melhor partição do Guloso e do SOARComb (o custo continua o ótimo, mas a partição devolvida pode ser a da heurística quando ela já é ótima). O tempo limite do FPT é a opção `-t` do `MCFISP-exe` (padrão 600 s).
+- Experimento do FPT: com 200 genes ele não termina (nem com a solução inicial). Calibração com 60 s por instância (`gen_db_fpt.sh`, F = 0): resolve 86% com N = 25, 33% com N = 50 e 1% com N = 100; o número de cópias (N/L) é o que mais pesa. `run_fpt_small.sh` (N = 25 e 50, 100 instâncias por arquivo, 600 s) foi estimado em cerca de 30 h. O travamento raro do `MCFISP-exe` está no #30 do `partition/BUGS.md`.
+- A tese (`partition.tex:497`) diz que os blocos exclusivos de D só crescem ao longo de um ramo, mas duas sequências de D podem se juntar; o código conta só as que nunca se juntam (item 9a do `CompatibilityWithText.md`).
 
 ### Comportamentos que outros arquivos supõem
 
@@ -36,7 +39,8 @@
 
 ### Como testar
 
-- `cd partition && stack test`. Os scripts compilam com `stack install --local-bin-path .`, e o `stack.yaml` usa Nix.
+- `cd partition && stack test`. Os scripts compilam com `stack install --local-bin-path .`, e o `stack.yaml` usa Nix. O `stack` não está instalado nesta máquina; use `nix-shell -p stack --run "stack test"`.
+- O `PFptCheck` compara o FPT com uma força bruta (`bruteForceCost`) em instâncias pequenas, balanceadas e desbalanceadas, com a relação de igualdade.
 - Ao otimizar, as saídas não devem mudar. Compile o executável antes e depois e compare as saídas, sem as linhas `# Time`, em muitas instâncias, com e sem sinal, com circulares, com intervalo (`-f`) e com números diferentes de lineares.
 - O `DB-exe` gera instâncias. O `RandDB` exige `-d`. No `RepDB`, a opção `-r` serve para duas coisas e conflita. O `DB-exe` nunca gera números diferentes de lineares; para isso, escreva um gerador próprio.
 - O FPT é exato. Para conferir, compare com uma força bruta que enumera os conjuntos de breakpoints de instâncias pequenas, incluindo circulares inteiros e circulares cortados uma vez. Foi assim que apareceu o bug #29.

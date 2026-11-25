@@ -29,6 +29,13 @@ Conferido contra a versão atual de `foundation.tex` e `partition.tex`. As linha
 7. **"Algoritmo guloso" de cobertura de vértices** (item 13; `partition.tex:420,431`): o código usa a 2-aproximação por emparelhamento maximal do Capítulo 2.
 8. **Complexidade do SOARComb** (item 14; `partition.tex:441`): a construção da partição não é O(n) com o `combine`.
 9. **Erro de digitação** (`foundation.tex:266`): "então o temos apenas um bloco".
+9a. **FPT com genomas desbalanceados** (`partition.tex:453-561`) [novo, 2026-11-23]. O `PFpt.hs` agora implementa a Regra 2 e o conjunto D. Pontos para o texto:
+   - a poda (`:497`) diz que os blocos exclusivos formados pelos genes de D "também só crescem ao longo de um ramo". O número de sequências maximais de genes de D pode diminuir: remover os genes entre duas sequências as junta num bloco só. O código conta só as sequências separadas por um gene que nunca pode ser removido (gene de aresta preta, rótulo que não é abundante no seu genoma ou que já tem todos os genes em excesso em D) e considera removidos os genes de um rótulo quando os que ainda podem ser removidos são exatamente os que faltam (no fim do ramo, D tem exatamente |occ(α,G) − occ(α,H)| genes de cada rótulo α);
+   - o código põe em D, já no grafo inicial, os genes cujo rótulo não ocorre no outro genoma (a Regra 2 teria um único ramo para cada um);
+   - um caminho é raro ou abundante conforme o rótulo no genoma das extremidades (U), e o código procura também os vértices isolados de H (com genomas balanceados, todo caminho ímpar é raro e basta procurar a partir de G);
+   - na Regra 2, para cada u ∈ U, o ramo de remoção vem antes dos ramos de casamento;
+   - a busca começa com a melhor partição do Guloso e do SOARComb como a melhor encontrada, e o custo dela já entra na poda. Sem isso, nas instâncias de 200 genes a busca muitas vezes não chegava a nenhuma folha em 10 minutos (e não devolvia partição) e as partições parciais eram piores que as do Guloso. O `MCFISP-exe` ganhou a opção `-t` (tempo limite do FPT, em segundos);
+   - a subseção da implementação (`:560`, com o `\todo`) pode citar esses pontos. Ela continua certa sobre a busca em profundidade com a melhor partição e o tempo limite.
 
 ### Código
 
@@ -109,7 +116,7 @@ Conferido contra a versão atual de `foundation.tex` e `partition.tex`. As linha
 - **Diferença:**
   - Pela definição, #breakpoints = #blocos − #lineares − #circulares inteiros.
   - **Caso balanceado:** minimizar blocos não distingue um circular inteiro (0 breakpoints) de um circular cortado uma vez (1 breakpoint).
-  - **Caso desbalanceado:** `costUnbalanced` = comuns + exclusivos_G + exclusivos_H, e a definição dá 2·comuns + exclusivos_G + exclusivos_H − constantes. Os blocos exclusivos ficam com peso relativo dobrado. Hoje esse ramo não é usado, porque o FPT recusa entradas desbalanceadas.
+  - **Caso desbalanceado:** `costUnbalanced` = comuns + exclusivos_G + exclusivos_H, e a definição dá 2·comuns + exclusivos_G + exclusivos_H − constantes. Os blocos exclusivos ficam com peso relativo dobrado. Na época esse ramo não era usado, porque o FPT recusava entradas desbalanceadas (ele as aceita desde 2026-11-23, ver o item 9a do "Em aberto").
 - **Ação:** fazer o custo contar `breakpoints` de G e de H, ou definir no texto o custo em blocos e ajustar o Teorema `teo:emp_part_cost`.
 
 ### 2. `checkCommonUnbal` ignora os telômeros na condição X∩Y=∅ — Código [confirmado] — ✅ corrigido

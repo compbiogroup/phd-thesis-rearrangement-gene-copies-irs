@@ -80,7 +80,7 @@ O `partition/` implementa os algoritmos do capítulo de partição de genomas (o
 | `Approx` | algoritmo de aproximação (classes ativas), com fator 2tk para relações de compatibilidade simétricas e transitivas; genomas desbalanceados passam antes por uma heurística de balanceamento |
 | `Greedy`, `GreedySin` | algoritmo guloso (`GreedySin` começa pelos blocos com genes que ocorrem uma vez em cada genoma) |
 | `SOAR`, `SOARComb` | algoritmo de correspondência de adjacências (`SOARComb` constrói a partição minimal a partir da correspondência) |
-| `FPT` | algoritmo exato parametrizado, com limite de tempo de 10 minutos por instância |
+| `FPT` | algoritmo exato parametrizado, que parte da melhor partição do Guloso e do SOARComb, com limite de tempo por instância (opção `-t`, 10 minutos por padrão) |
 | `ApproxLB` | escreve só o limitante inferior da prova da aproximação |
 
 O formato de entrada e de saída e as demais opções (`-s` para genes com sinal, `--direct` para partição direta) estão em `partition/doc/Main.md`. Com `-a Approx`, o arquivo `<saída>_phase2` registra quantas vezes a segunda etapa da aproximação foi usada em cada instância.
@@ -89,6 +89,8 @@ O formato de entrada e de saída e as demais opções (`-s` para genes com sinal
 |---|---|
 | `scripts/run_part_tese.sh` | roda os algoritmos de partição e grava, em `TESE_OUT/ANS_TESE_PART/`, as partições (`PART/`), os custos (`COST/`), as instâncias reduzidas (`RED/`, via `scripts/reduce_partition.py`) e, para o `Approx`, os usos da segunda etapa (`PHASE2/`) |
 | `scripts/run_part_fix_tese.sh` | escreve as partições em posições dos genomas originais (`FIX/`, via `scripts/partition_fixed.py`), para fixar as adjacências no `dec` (opções `-f` e `-p`) |
+| `scripts/gen_db_fpt.sh`, `scripts/run_fpt_small.sh` | geram uma base menor (N = 25 e 50, parâmetros proporcionais aos da base da tese, F = 0) em `db_fpt/` e rodam nela o FPT e as heurísticas, em `TESE_OUT/ANS_TESE_FPT_SMALL/`; é o experimento com instâncias resolvidas de forma exata |
+| `scripts/run_fpt.sh` | roda o FPT (com as heurísticas para comparação) nas 10 primeiras instâncias de cada arquivo da base menor e grava em `TESE_OUT/ANS_TESE_FPT/`, com `STATUS/` dizendo se cada instância foi resolvida de forma exata ou parou no limite de tempo (`TIME_LIMIT`) |
 | `scripts/table_part_tese.py` | resume os custos de `COST/` numa tabela |
 
 A lista de algoritmos de cada script pode ser trocada com a variável `ALGOS` (por padrão, `Greedy GreedySin SOAR SOARComb` no primeiro e `Greedy SOARComb Approx` no segundo).

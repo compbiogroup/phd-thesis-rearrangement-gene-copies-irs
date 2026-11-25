@@ -43,6 +43,7 @@ A maior parte dos problemas listados em `AddCircular.md` já foi corrigida (`nex
 | 27 | ✅ corrigido | `PFpt.hs` (`cleanEdges`) | Limpeza de arestas passa do limite de uma testemunha que cobre um circular inteiro → grafo assimétrico → `patternError` |
 | 28 | ✅ corrigido | `PFpt.hs` (`sample0`) | Sem sinal, os singletons entravam na amostra inicial só no sentido direto → FPT perdia blocos reversos |
 | 29 | ✅ corrigido | `PFpt.hs` (`findLimitsDir`) | Num circular, a testemunha só considerava uma janela máxima (direita primeiro) → FPT perdia blocos que são o circular cortado em outra posição |
+| 30 | Em aberto | `PFpt.hs` / `Main.hs` (paralelismo) | Raramente, o `MCFISP-exe -a FPT` para de calcular (CPU perto de zero) sem terminar algumas instâncias, mesmo com tempo limite |
 
 ---
 
@@ -658,3 +659,9 @@ O bloco ótimo `-1 -2 2` (posições 3, 1, 2 do circular) só sai do par (G3, H6
 
 **Verificação:** uma força bruta independente (todos os conjuntos de breakpoints, com circulares inteiros e circulares cortados uma vez) foi comparada com o FPT em 1500 instâncias pequenas com circulares (1000 com sinal, 500 sem sinal). O FPT novo deu o ótimo em todas; o antigo errava em 7. Em outras 800 instâncias com circulares, o FPT novo nunca foi pior que Guloso, SOARComb e Approx, e o tempo total não mudou (34 s nas 400 de `s3`). `stack test` passou.
 
+
+## 30. FPT para de calcular sem terminar algumas instâncias [observado uma vez] — em aberto
+
+Na calibração do experimento do FPT (2026-11-24), `MCFISP-exe -a FPT -s -t 60 -i N50_SREV25_I0_L50_F0.txt` (8 instâncias geradas com `gen_db_fpt.sh`, rodando ao mesmo tempo que outro processo igual) gravou 3 saídas em cerca de 3 s e ficou mais de 80 minutos sem gravar as outras 5, dormindo (55 s de CPU no total). O mesmo arquivo terminou em 60 s em todas as repetições: sozinho, com `--no-par`, com `-t 10` e com quatro processos simultâneos. A causa não foi encontrada. Suspeitas: a interação do `race` (tempo limite) com o pool do `parallel-io` ou o cancelamento de uma thread que não aloca.
+
+**Contorno:** o `run_fpt.sh` limita cada chamada do `MCFISP-exe` com `timeout`; um arquivo incompleto fica na pasta temporária e é refeito na próxima execução do script.

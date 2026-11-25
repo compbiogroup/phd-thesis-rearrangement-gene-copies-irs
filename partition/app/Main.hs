@@ -41,7 +41,8 @@ data Args = Args
     output :: String,
     noParallel :: Bool,
     signed :: Sign,
-    direct :: Bool
+    direct :: Bool,
+    timeLimit :: Int
   }
 
 data PartitionAlgorithm = SOAR | SOARComb | Greedy | GreedySin | Approx | FPT | ApproxLB deriving (Read, Show)
@@ -84,6 +85,15 @@ argsParser =
           <> short 'd'
           <> help "Find a direct common partition (PDCMG: blocks must be completely compatible, without reversals) instead of a reverse common partition (PRCMG: blocks may be compatible after a reversal). The direct problem is usually solved for unsigned genomes."
       )
+    <*> option
+      auto
+      ( long "time-limit"
+          <> short 't'
+          <> metavar "SECONDS"
+          <> value 600
+          <> showDefault
+          <> help "Time limit of the FPT for each instance, in seconds. When it is reached, the best partition found is written as a partial solution."
+      )
 
 opts :: ParserInfo Args
 opts =
@@ -115,7 +125,7 @@ main = do
     -- stderr), the other instances are still processed
     runOne args (i, bstrs) = do
       start <- getCurrentTime
-      let run m = produceBlockMatch m (direct args) (partAlg args) (signed args) bstrs
+      let run m = produceBlockMatch m (direct args) (partAlg args) (signed args) (timeLimit args) bstrs
       result <- try (evaluate . force =<< if direct args then run RFDM else run RFRM)
       end <- getCurrentTime
       let time = BS.pack . (show :: Double -> String) . realToFrac $ diffUTCTime end start
@@ -142,14 +152,14 @@ main = do
 -- | Run the algorithm on one instance. The matcher gives the compatibility between
 -- blocks: RFDM (direct common partition, PDCMG) or RFRM (reverse, PRCMG). Returns the
 -- lines of the output and, for Approx, the number of times its second stage broke a block.
-produceBlockMatch :: (Matcher m GenesIRsR GenesIRsF) => m GenesIRsR GenesIRsF -> Bool -> PartitionAlgorithm -> Sign -> (BS.ByteString, BS.ByteString, BS.ByteString, BS.ByteString) -> IO ([BS.ByteString], Maybe Int)
-produceBlockMatch matcher isDirect alg sign (s1, i1, s2, i2)
+produceBlockMatch :: (Matcher m GenesIRsR GenesIRsF) => m GenesIRsR GenesIRsF -> Bool -> PartitionAlgorithm -> Sign -> Int -> (BS.ByteString, BS.ByteString, BS.ByteString, BS.ByteString) -> IO ([BS.ByteString], Maybe Int)
+produceBlockMatch matcher isDirect alg sign time_limit (s1, i1, s2, i2)
   | isDirect && sign == Signed && not (directPossible g h) =
       error "ERROR: There is no direct common partition, a gene has more copies with one of the signs in one genome and more copies with the other sign in the other genome (use a reverse partition, without --direct)."
   | otherwise = case alg of
     ApproxLB -> return ([BS.pack . show $ balancedLowerBound approxLowerBound matcher g h], Nothing)
     _ -> do
-      (maybe_part, fullComp, phase2) <- getPartition matcher alg g h
+      (maybe_part, fullComp, phase2) <- getPartition matcher time_limit alg g h
       case maybe_part of
         Nothing -> if fullComp then return (["# Error: Execution finish but no partition was found"], phase2) else return (["# No solution found in time"], phase2)
         Just part ->
@@ -178,13 +188,14 @@ directPossible g h = all ok (Map.keys (Map.union cg ch))
 writeBlocksCorrespondence :: [[Int]] -> BS.ByteString
 writeBlocksCorrespondence = BS.unwords . (\l -> interleavelists l (replicate (length l - 1) "|")) . map (BS.unwords . map (LBS.toStrict . toLazyByteString . intDec))
 
-getPartition :: (Matcher m GenesIRsR GenesIRsF) => m GenesIRsR GenesIRsF -> PartitionAlgorithm -> ChromList GenesIRsR -> ChromList GenesIRsF -> IO (Maybe (CommonPartition GenesIRsR GenesIRsF), Bool, Maybe Int)
-getPartition matcher FPT g h = (\(p, full) -> (p, full, Nothing)) <$> fptPartition 600000000 matcher g h
-getPartition matcher SOAR g h = return (Just $ soarPartition False matcher g h, True, Nothing)
-getPartition matcher SOARComb g h = return (Just $ soarPartition True matcher g h, True, Nothing)
-getPartition matcher Greedy g h = return (Just $ greedyPartition False matcher g h, True, Nothing)
-getPartition matcher GreedySin g h = return (Just $ greedyPartition True matcher g h, True, Nothing)
-getPartition matcher Approx g h =
+-- | The partition of an instance. The time limit (in seconds) is used only by the FPT.
+getPartition :: (Matcher m GenesIRsR GenesIRsF) => m GenesIRsR GenesIRsF -> Int -> PartitionAlgorithm -> ChromList GenesIRsR -> ChromList GenesIRsF -> IO (Maybe (CommonPartition GenesIRsR GenesIRsF), Bool, Maybe Int)
+getPartition matcher time_limit FPT g h = (\(p, full) -> (p, full, Nothing)) <$> fptPartition (time_limit * 1000000) matcher g h
+getPartition matcher _ SOAR g h = return (Just $ soarPartition False matcher g h, True, Nothing)
+getPartition matcher _ SOARComb g h = return (Just $ soarPartition True matcher g h, True, Nothing)
+getPartition matcher _ Greedy g h = return (Just $ greedyPartition False matcher g h, True, Nothing)
+getPartition matcher _ GreedySin g h = return (Just $ greedyPartition True matcher g h, True, Nothing)
+getPartition matcher _ Approx g h =
   let (part, phase2) = balancedPartitionWith 0 approxPartitionPhase2 matcher g h
    in return (Just part, True, Just phase2)
-getPartition _ _ _ _ = error patternError
+getPartition _ _ _ _ _ = error patternError

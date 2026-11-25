@@ -11,7 +11,7 @@ The executable `MCFISP-exe` runs one algorithm (option `-a`) on every instance o
 | `Approx` | approximation algorithm of the thesis (active classes), with factor 2tk for symmetric and transitive compatibility relations; unbalanced genomes first go through a balancing heuristic |
 | `Greedy`, `GreedySin` | greedy algorithm (longest common substring first; `GreedySin` starts with the blocks of genes that occur once in each genome) |
 | `SOAR`, `SOARComb` | adjacency matching algorithm (`SOARComb` builds the minimal partition from the matching) |
-| `FPT` | exact fixed-parameter algorithm, with a limit of 10 minutes per instance |
+| `FPT` | exact fixed-parameter algorithm, starting from the best partition of Greedy and SOARComb, with a time limit per instance (option `-t`, 10 minutes by default) |
 | `ApproxLB` | writes only the lower bound used in the proof of the approximation |
 
 The executable `DB-exe` generates random instances.

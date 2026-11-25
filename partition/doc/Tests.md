@@ -1,8 +1,8 @@
 # Tests (`test/`)
 
-The tests are Hedgehog property tests. `test/Spec.hs` runs `GenomesCheck.tests` and `PartitionCheck.tests` and prints whether all of them passed (`stack test`, or `make test`).
+The tests are Hedgehog property tests. `test/Spec.hs` runs `GenomesCheck.tests`, `PartitionCheck.tests` and `PFptCheck.tests` and prints whether all of them passed (`stack test`, or `make test`).
 
-> **Status:** the suite compiles and all 26 properties pass (14 in `GenomesCheck`, 12 in `PartitionCheck`).
+> **Status:** the suite compiles and all properties pass.
 
 ## `test/GenomesCheck.hs`
 
@@ -14,6 +14,8 @@ The tests are Hedgehog property tests. `test/Spec.hs` runs `GenomesCheck.tests` 
 | `genGenome n` | Either of the two, wrapped in `GenomeWrapper` |
 | `genCircRGenome n` | Signed circular rigid chromosome (*n* genes, *n* IRs) |
 | `rearrangeAndFlexibilizeGenome k g` | `g` after `k` random reversals, made flexible |
+| `genMultiPair unbal sign n` | Pair of genomes with 1 to 3 linear or circular chromosomes over a small alphabet; H is G after random DCJs, made flexible. With `unbal`, some genes of G and of H are replaced by exclusive genes |
+| `genMultiPairWith unbal shared max_flex sign n` | The same; with `shared`, a replaced gene may also get a label of the alphabet (labels in both genomes with distinct occurrences), and the flexibility is at most `max_flex` (0 gives the equality relation) |
 
 `adjacencyIRs g` lists, for each adjacency, the unordered pair of genes with its IR. It's used to check that operations keep adjacencies.
 
@@ -53,7 +55,10 @@ The tests are Hedgehog property tests. `test/Spec.hs` runs `GenomesCheck.tests` 
 
 ## `test/PFptCheck.hs`
 
-Placeholder with no properties. It isn't included in `Spec.hs`.
+- `prop_fptIsValidAndNotWorseThanOthers` (reverse, signed) and `prop_fptDirectIsValidAndNotWorseThanOthers` (direct, unsigned): on balanced genomes (`genMultiPair`), the FPT finishes, gives a balanced common partition of the input genomes, and its cost is never larger than the costs of Greedy, SOARComb and Approx.
+- `prop_fptUnbalIsValidAndNotWorseThanOthers` and `prop_fptUnbalDirectIsValidAndNotWorseThanOthers`: the same on unbalanced genomes with labels in both genomes with distinct occurrences (`genMultiPairWith True True 50`), which use branching rule 2. The partition may be unbalanced.
+- `prop_fptIsExact` and `prop_fptDirectIsExact`: with the equality relation (`max_flex` 0), on small balanced and unbalanced genomes, the cost of the FPT is the minimum cost of a common partition, found by enumerating all pairs of breakpoint sets (`bruteForceCost`).
+- In these properties, an instance in which the FPT reaches its time limit (20 s) is discarded: a few small instances, for example with many caps, take longer.
 
 ## Suggested additions
 
