@@ -9,9 +9,12 @@ Códigos usados nos experimentos da tese de doutorado de Gabriel Siqueira sobre 
 | `cyc/` | heurísticas de empacotamento do grafo de adjacências por ciclos (`dec`), distâncias de rearranjo (`dist`), partição de genomas a partir de um empacotamento (`part`) e conversão para permutações (`toperm`); veja `cyc/README.md` |
 | `partition/` | algoritmos de partição de genomas (`MCFISP-exe`): aproximação, guloso, correspondência de adjacências (SOAR/SOARComb) e algoritmo FPT; veja `partition/README.md` e `partition/doc/` |
 | `db/` | base de dados sintética usada nos experimentos; veja `db/README.md` |
+| `db_fpt/` | base menor (25 e 50 genes) do experimento do FPT com instâncias resolvidas de forma exata; veja `db_fpt/README.md` |
 | `scripts/` | scripts que rodam os experimentos da tese e resumem os resultados |
 
 ## Compilação
+
+Com Nix, `nix-shell` na raiz do repositório (`default.nix`) abre um shell com tudo o que é preciso para compilar e rodar os códigos e os scripts: `cmake`, `g++` com OpenMP, `stack`, Python 3 com `pandas` e `git-lfs`.
 
 ```sh
 cd cyc
