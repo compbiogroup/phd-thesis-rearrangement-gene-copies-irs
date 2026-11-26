@@ -1560,6 +1560,9 @@ bool CycleGraph::cycle_fixes(const vector<Vtx_id> &cycle,
     }
     return true;
   }
+  // indels that add_cycle would mark, by gene (each one uses the quota of its
+  // gene, as in mark_indel_edges and bfs)
+  map<Gene, int> new_indels;
   for (size_t i = 1; i < cycle.size(); i += 2) {
     Vtx_id v = cycle[i];
     Vtx_id u = (i == cycle.size() - 1) ? cycle[0] : cycle[i + 1];
@@ -1573,8 +1576,15 @@ bool CycleGraph::cycle_fixes(const vector<Vtx_id> &cycle,
         return false;
       continue;
     }
-    if (u == vertices[v].red) // add_cycle marks this edge as an indel
+    if (u == vertices[v].red) { // add_cycle marks this edge as an indel
+      Gene g = vertices[v].gene_val;
+      auto it = indel_count.find(g);
+      int count = (it != indel_count.end() ? it->second : 0) + new_indels[g];
+      if (count * vertices[v].indel_update >= 0)
+        return false; // no indel of this gene left in this genome
+      new_indels[g] += vertices[v].indel_update;
       continue;
+    }
     fix[v] = u;
     fix[u] = v;
     // add_cycle also fixes the edge between the other extremities of the genes

@@ -419,3 +419,20 @@ Priority: items marked ⚠️ affect correctness of reported distances or crash 
   closure depends only on the caps and on the fixed gray edges, which do not change
   while indels are marked, so these genes are now left out of the candidates
   (`blocked`). The outputs of the instances that finished before did not change.
+
+## 12. Found on 2026-11-26 (quotas of indels)
+
+- [X] ⚠️ **`ga` marks more indels than the quota of a gene** — with `bfs` and `1c2c3c`
+  (e.g. `dec ga bfs -e` on the first 5 instances of
+  `N200/SREV/N200_SREV100_I50_L100_F0.txt`: 30 decompositions with two deleted
+  copies of a gene whose excess in the origin is one). The crossover joins cycles
+  of the two parents with `check_and_add_cycle`, and `cycle_fixes` checked the
+  gray edges of a cycle but not the quota of its indels (`indel_count`), so a child
+  could get the deletion of one copy from each parent. The extra deletion forces
+  an extra insertion of the same gene in the other genome. Fixed by checking, in
+  `cycle_fixes`, that each indel of the cycle still has a quota (as
+  `mark_indel_edges` and `bfs` do). A check of the quotas at the end of every
+  decomposition found no violation afterwards (`ga` with `bfs`, `map` and
+  `1c2c3c` on the four operations), and the outputs of `rand -k 1` did not change.
+  With fixed adjacencies (`-f`) the indels of whole blocks still do not follow the
+  quotas, as documented in `scripts/PARTICAO_CYC.md`.
